@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+
+# נתוני התוכנה (לא אמורים להיות כאן, אבל ליתר ביטחון)
+data.json
+data.json.bak
+data.v1.backup.json

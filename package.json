@@ -1,0 +1,60 @@
+{
+  "name": "securecopy",
+  "productName": "SecureCopy",
+  "version": "2.1.0",
+  "description": "שיעורי חתנים – העתקה מאובטחת של שיעורים לחתנים",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "build:ui": "node scripts/build-ui.mjs",
+    "prestart": "npm run build:ui",
+    "start": "electron .",
+    "test": "node --test",
+    "predist": "npm run build:ui",
+    "dist": "electron-builder --win --x64",
+    "pack": "electron-builder --dir",
+    "test:e2e": "electron --no-sandbox e2e/e2e-main.js",
+    "diagnose:mtp": "node scripts/mtp-diagnose.js",
+    "test:mtp-copy": "node scripts/mtp-copy-test.js"
+  },
+  "build": {
+    "appId": "com.securecopy.app",
+    "productName": "שיעורי חתנים",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/main.js",
+      "src/preload.js",
+      "src/core/**/*",
+      "src/renderer/index.html",
+      "src/renderer/styles.css",
+      "src/renderer/ui.bundle.js",
+      "src/renderer/fonts/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico",
+      "artifactName": "SecureCopy-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "language": "1037",
+      "shortcutName": "שיעורי חתנים",
+      "uninstallDisplayName": "שיעורי חתנים"
+    },
+    "executableName": "SecureCopy"
+  },
+  "devDependencies": {
+    "@fontsource-variable/heebo": "^5.3.0",
+    "@material/material-color-utilities": "^0.4.0",
+    "@material/web": "^2.5.0",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "material-symbols": "^0.48.0"
+  }
+}
