@@ -13,6 +13,15 @@ const LOG_LABELS = {
   admin_setup: ['key', 'הגדרת סיסמת מנהל'], admin_password_changed: ['password', 'סיסמת מנהל הוחלפה']
 };
 const REASONS = { expired: 'פג תוקף', used: 'הקוד נוצל' };
+// מסנן "מצב" בלשונית הקודים: [ערך, תווית, תנאי]
+const USAGE_FILTERS = [
+  ['all', 'הכול', () => true],
+  ['unused', 'לא שומשו עדיין', c => c.uses === 0 && c.status !== 'expired'],
+  ['usedOnce', 'שומשו (לפחות פעם אחת)', c => c.uses > 0],
+  ['active', 'פעילים (אפשר להיכנס)', c => c.status === 'active'],
+  ['used', 'נוצלו עד הסוף', c => c.status === 'used'],
+  ['expired', 'פג תוקף', c => c.status === 'expired']
+];
 const STATUS = { active: ['פעיל', 'st-active'], used: ['נוצל', 'st-used'], expired: ['פג תוקף', 'st-expired'] };
 
 function authFail(r) {
@@ -53,6 +62,25 @@ function CodesPanel() {
   const tbody = h('tbody');
   const selAll = h('md-checkbox', { 'aria-label': 'בחר הכל' });
 
+  // סינון לפי תיקייה ולפי מצב השימוש
+  const folderSel = h('md-outlined-select', { label: 'תיקייה', class: 'filter-select', 'aria-label': 'סינון לפי תיקייה' });
+  const usageSel = h('md-outlined-select', { label: 'מצב', class: 'filter-select', 'aria-label': 'סינון לפי מצב' },
+    ...USAGE_FILTERS.map(([v, t], i) => h('md-select-option', { value: v, selected: i === 0, 'display-text': t }, h('div', { slot: 'headline', text: t }))));
+  const btnClear = h('md-text-button', { text: 'נקה סינון', onClick: () => {
+    search.value = ''; folderSel.value = 'all'; usageSel.value = 'all'; onFilter();
+  } }, h('md-icon', { slot: 'icon', text: 'filter_alt_off' }));
+  function fillFolders() {
+    const prev = folderSel.value || 'all';
+    const byId = new Map();
+    for (const c of all) for (const f of c.folders) byId.set(f.id, f.name);
+    const opts = [['all', 'כל התיקיות'], ...[...byId].sort((a, b) => a[1].localeCompare(b[1], 'he'))];
+    if (all.some(c => !c.folders.length)) opts.push(['none', 'ללא תיקייה']);
+    const keep = opts.some(([v]) => v === prev) ? prev : 'all';
+    folderSel.replaceChildren(...opts.map(([v, t]) => h('md-select-option', { value: v, selected: v === keep, 'display-text': t }, h('div', { slot: 'headline', text: t }))));
+    folderSel.value = keep;
+  }
+  const filterActive = () => !!search.value.trim() || (folderSel.value || 'all') !== 'all' || (usageSel.value || 'all') !== 'all';
+
   const btnReset = h('md-filled-tonal-button', { text: 'אפס שימוש', onClick: async () => {
     if (!selected.size) return snack('לא נבחרו קודים', { error: true });
     const r = await A.resetUsage([...selected]); if (authFail(r)) return;
@@ -74,11 +102,24 @@ function CodesPanel() {
 
   const filtered = () => {
     const q = search.value.trim().toLowerCase();
-    return all.filter(c => !q || c.hint.includes(q) || (c.label || '').toLowerCase().includes(q) || c.folders.some(f => f.name.toLowerCase().includes(q)));
+    const fid = folderSel.value || 'all';
+    const usage = (USAGE_FILTERS.find(u => u[0] === usageSel.value) || USAGE_FILTERS[0])[2];
+    return all.filter(c =>
+      (!q || c.hint.includes(q) || (c.label || '').toLowerCase().includes(q) || c.folders.some(f => f.name.toLowerCase().includes(q))) &&
+      (fid === 'all' || (fid === 'none' ? !c.folders.length : c.folders.some(f => f.id === fid))) &&
+      usage(c));
   };
+  // שינוי סינון מבטל בחירה של קודים שהוסתרו, כדי שפעולה (מחיקה/איפוס) לא תחול על קודים שלא רואים
+  function onFilter() {
+    const visible = new Set(filtered().map(c => c.id));
+    for (const id of [...selected]) if (!visible.has(id)) selected.delete(id);
+    selAll.checked = false;
+    draw(); updateSel();
+  }
   async function load() {
     const r = await A.listCodes(); if (authFail(r)) return;
     all = r.codes;
+    fillFolders();
     for (const id of [...selected]) if (!all.some(c => c.id === id)) selected.delete(id);
     selAll.checked = false;
     draw(); updateSel();
@@ -86,6 +127,7 @@ function CodesPanel() {
   function draw() {
     const rows = filtered();
     count.textContent = `${rows.length} מתוך ${all.length} קודים`;
+    btnClear.hidden = !filterActive();
     tbody.replaceChildren();
     if (!rows.length) {
       tbody.append(h('tr', {}, h('td', { colspan: 8, class: 'empty-cell', text: all.length ? 'אין תוצאות' : 'עוד לא הונפקו קודים. עבור ללשונית "הנפקה".' })));
@@ -111,11 +153,14 @@ function CodesPanel() {
     document.querySelectorAll('tbody md-checkbox').forEach(cb => { cb.checked = selAll.checked; });
     updateSel();
   });
-  search.addEventListener('input', draw);
+  search.addEventListener('input', onFilter);
+  folderSel.addEventListener('change', onFilter);
+  usageSel.addEventListener('change', onFilter);
   load();
 
   return h('section', { class: 'panel' },
     h('div', { class: 'toolbar' }, search, selCount, btnReset, btnDel, btnExp),
+    h('div', { class: 'toolbar filters' }, icon('filter_list'), folderSel, usageSel, btnClear),
     h('div', { class: 'info-line' }, icon('info'), h('span', { class: 'md-typescale-body-small muted', text: 'מטעמי אבטחה הקודים נשמרים מוצפנים ואינם ניתנים לצפייה אחרי ההנפקה – מוצגות רק 4 הספרות האחרונות.' })),
     h('div', { class: 'table-wrap card' },
       h('table', { class: 'data' },

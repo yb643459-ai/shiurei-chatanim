@@ -100,6 +100,20 @@ app.whenReady().then(async () => {
     check('code actions enabled after selecting one', (await btnState()).every(d => !d) && (await text()).includes('1 נבחרו'));
     await shot('06b-admin-codes-selected');
     await ev(`document.querySelector('tbody md-checkbox').click()`); await sleep(200);
+    // סינון: אף קוד עוד לא שומש; לפי תיקייה – כולם
+    const sel = lbl => `[...document.querySelectorAll('md-outlined-select')].find(s => s.label === ${JSON.stringify(lbl)})`;
+    const setSel = (lbl, v) => ev(`(() => { const s = ${sel(lbl)}; s.value = ${JSON.stringify(v)}; s.dispatchEvent(new Event('change')); return s.value; })()`);
+    await setSel('מצב', 'usedOnce'); await sleep(300);
+    check('filter "used" shows no codes yet', (await text()).includes('0 מתוך 6 קודים'));
+    await shot('06c-filter-used');
+    await setSel('מצב', 'unused'); await sleep(300);
+    check('filter "unused" shows all 6', (await text()).includes('6 מתוך 6 קודים'));
+    const fOpts = await ev(`[...(${sel('תיקייה')}).querySelectorAll('md-select-option')].map(o => o.value)`);
+    check('folder filter lists the folder', fOpts.length === 2 && fOpts[0] === 'all', fOpts.join(','));
+    await setSel('תיקייה', fOpts[1]); await sleep(300);
+    check('folder filter keeps its codes', (await text()).includes('6 מתוך 6 קודים'));
+    await clickBtn('נקה סינון'); await sleep(300);
+    check('clear filter resets', (await ev(`(${sel('מצב')}).value`)) === 'all' && (await ev(`(${sel('תיקייה')}).value`)) === 'all');
     await ev(`document.querySelectorAll('md-primary-tab')[3].click()`); await sleep(500); await shot('07-admin-log');
     check('log names the number of codes', (await text()).includes('6 קודים'));
     await ev(`document.querySelectorAll('md-primary-tab')[4].click()`); await sleep(500); await shot('08-admin-settings');
@@ -167,7 +181,9 @@ app.whenReady().then(async () => {
     await typeCode(codes[1]); await clickBtn('כניסה'); await sleep(700);
     check('another fresh code still works', (await text()).includes('סיכום שיעור.pdf'));
     // אזהרת חוסר פעילות: מקדמים את השעון של הממשק בלבד, כך שנשארו 10 שניות לפני הניתוק
-    await ev(`(async () => { const idle = (await window.api.state()).settings.studentIdleSeconds; const real = Date.now.bind(Date); window.__realNow = real; Date.now = () => real() + (idle - 10) * 1000; })()`);
+    // זמן הניתוק נקרא מקובץ הנתונים: api.state() מנתק את הכניסה ולכן אסור לקרוא לו כאן (גרם לכישלון אקראי)
+    const idleSec = JSON.parse(fs.readFileSync(path.join(data, 'data.json'), 'utf8')).settings.studentIdleSeconds;
+    await ev(`(() => { const idle = ${Number(idleSec)}; const real = Date.now.bind(Date); window.__realNow = real; Date.now = () => real() + (idle - 10) * 1000; })()`);
     await sleep(1500);
     check('idle warning shown before logout', (await snackText()).includes('הכניסה תסתיים בעוד'), await snackText());
     await shot('13a-idle-warning');
@@ -175,12 +191,12 @@ app.whenReady().then(async () => {
     check('idle warning hidden after activity', !(await ev(`document.querySelector('#snackbar').classList.contains('show')`)));
     await ev(`document.querySelector('[data-aria-label="יציאה"]').click()`); await sleep(500);
 
-    for (let i = 0; i < 5; i++) { await typeCode('99999999'); await clickBtn('כניסה'); await sleep(250); }
-    await sleep(400); await shot('13-locked');
-    check('lockout after repeated failures', (await text()).includes('יותר מדי ניסיונות'));
-    await typeCode(codes[2]);
-    const state = await ev(`document.querySelector('.code-display').textContent`);
-    check('keypad disabled while locked', state.includes('הקלד'), state);
+    for (let i = 0; i < 8; i++) { await typeCode('99999999'); await clickBtn('כניסה'); await sleep(250); }
+    await sleep(400); await shot('13-many-wrong-codes');
+    check('no lockout after repeated wrong codes', !(await text()).includes('יותר מדי ניסיונות') && (await text()).includes('קוד שגוי'));
+    await typeCode(codes[2]); await clickBtn('כניסה');
+    check('valid code works right after many wrong ones', await waitFor(`document.querySelectorAll('.file-item').length > 0`));
+    await ev(`document.querySelector('[data-aria-label="יציאה"]').click()`); await sleep(600);
 
     await ev(`document.querySelector('[data-aria-label^="ערכת נושא"]').click()`); await sleep(200);
     await ev(`document.querySelector('[data-aria-label^="ערכת נושא"]').click()`); await sleep(400);

@@ -3,7 +3,7 @@
  * Vault – שכבת הנתונים והחוקים של SecureCopy (ללא תלות ב-Electron, ניתנת לבדיקה).
  *  - קודי תלמידים נשמרים כגיבוב בלבד (SHA-256 + salt). בטבלה מוצגות 4 הספרות האחרונות.
  *  - סיסמת ניהול: scrypt. אין סיסמת ברירת מחדל – בהפעלה הראשונה מגדירים אחת.
- *  - נעילה מדורגת אחרי ניסיונות כושלים (נשמרת גם אחרי הפעלה מחדש).
+ *  - נעילה מדורגת אחרי ניסיונות כושלים – לסיסמת הניהול בלבד (נשמרת גם אחרי הפעלה מחדש). לקודי תלמידים אין נעילה.
  *  - שימוש חד-פעמי: קוד "נצרך" בהעתקה המוצלחת הראשונה (maxUses; 0 = ללא הגבלה).
  *  - כתיבה אטומית + גיבוי אחרון; יומן פעילות בקובץ נפרד.
  */
@@ -56,7 +56,7 @@ class Vault {
       folders: d.folders && typeof d.folders === 'object' ? d.folders : {},
       codes: d.codes && typeof d.codes === 'object' ? d.codes : {},
       security: {
-        code:  { fails: 0, lockedUntil: 0, ...(d.security?.code  || {}) },
+        code:  { fails: 0, lockedUntil: 0 },   // לא בשימוש מגרסה 2.2.0; מאופס כדי שנעילה ישנה לא תישאר
         admin: { fails: 0, lockedUntil: 0, ...(d.security?.admin || {}) }
       }
     };
@@ -327,19 +327,15 @@ class Vault {
     return { ok: true, detached: uses };
   }
 
+  /** קוד תלמיד: אין נעילה אחרי ניסיונות כושלים (מגרסה 2.2.0), כדי שטעות של אחד לא תחסום את כולם. רק נרשם ביומן. */
   checkCode(code) {
-    const lock = this._lockState('code');
-    if (lock.locked) return { ok: false, ...lock, msg: 'יותר מדי ניסיונות' };
-
     const clean = typeof code === 'string' && /^\d{4,32}$/.test(code) ? code : null;
     const digest = clean ? hashCode(this.data.salt, clean) : null;
     const r = digest ? this.data.codes[digest] : null;
     if (!r) {
-      const after = this._fail('code');
       this.log('login_fail');
-      return { ok: false, ...after, msg: 'קוד שגוי' };
+      return { ok: false, msg: 'קוד שגוי' };
     }
-    this._clearFails('code');
 
     const st = statusOf(r, this.now());
     if (st === 'expired') { this.log('login_denied', { hint: r.hint, label: r.label, reason: 'expired' }); return { ok: false, msg: `פג תוקף הקוד (${r.expiryDate})` }; }

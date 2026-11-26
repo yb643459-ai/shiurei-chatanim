@@ -88,8 +88,6 @@ function renderSetup() {
 
 function renderHome() {
   S.code = ''; S.session = null;
-  let lockStop = null; let locked = false;
-
   const display = h('div', { class: 'code-display md-typescale-headline-medium', dir: 'ltr', 'aria-live': 'polite' });
   const errEl = h('div', { class: 'form-error md-typescale-body-medium', hidden: true, role: 'alert' });
   const enter = h('md-filled-button', { text: 'כניסה', disabled: true, onClick: () => submit() }, h('md-icon', { slot: 'icon', text: 'login' }));
@@ -103,13 +101,13 @@ function renderHome() {
       const chars = [...S.code].map(c => (S.showCode ? c : '●'));
       display.textContent = chars.map((c, i) => (i && i % 4 === 0 ? ' ' : '') + c).join('');
     }
-    enter.disabled = locked || S.code.length < 8 || S.busy;
+    enter.disabled = S.code.length < 8 || S.busy;
   }
-  const press = d => { if (locked || S.busy || S.code.length >= 20) return; S.code += d; errEl.hidden = true; paint(); };
-  const back = () => { if (locked || S.busy) return; S.code = S.code.slice(0, -1); errEl.hidden = true; paint(); };
+  const press = d => { if (S.busy || S.code.length >= 20) return; S.code += d; errEl.hidden = true; paint(); };
+  const back = () => { if (S.busy) return; S.code = S.code.slice(0, -1); errEl.hidden = true; paint(); };
 
   async function submit() {
-    if (locked || S.busy || S.code.length < 8) return;
+    if (S.busy || S.code.length < 8) return;
     S.busy = true; paint();
     const r = await api.verifyCode(S.code);
     S.busy = false;
@@ -117,11 +115,7 @@ function renderHome() {
     if (r.ok) { S.session = r; go(renderFiles); return; }
     display.classList.remove('shake'); void display.offsetWidth; display.classList.add('shake');
     errEl.hidden = false;
-    if (r.locked && r.retryAfter) {
-      locked = true; paint();
-      lockStop = lockCountdown(r.retryAfter, n => { errEl.textContent = `יותר מדי ניסיונות. אפשר לנסות שוב בעוד ${n} שניות`; },
-        () => { locked = false; errEl.hidden = true; paint(); });
-    } else errEl.textContent = r.msg || 'קוד שגוי';
+    errEl.textContent = r.msg || 'קוד שגוי';
   }
 
   const keypad = h('div', { class: 'keypad', dir: 'ltr' },
@@ -148,7 +142,7 @@ function renderHome() {
         h('div', { class: 'code-row' }, display, eye),
         errEl, keypad)));
   paint();
-  return () => { window.removeEventListener('keydown', onKey); lockStop && lockStop(); };
+  return () => { window.removeEventListener('keydown', onKey); };
 }
 
 function renderAdminLogin() {

@@ -134,21 +134,24 @@ test('vault: expiry is inclusive of the last day', () => {
   assert.equal(v.prepareBatch({ folderIds: [folderId(v, tmp())], count: 1, expiryDate: '2026-02-31' }).ok, false);
 });
 
-test('vault: escalating lockout, persisted across restart', () => {
-  let t = 1_000_000;
-  const { v, dir } = newVault(() => t); v.setupAdmin('passw0rd!');
+test('vault: wrong student codes never lock out a valid code', () => {
+  const { v, dir } = newVault(); v.setupAdmin('passw0rd!');
   const [c] = issue(v, tmp(), { count: 1 });
-  for (let i = 0; i < 4; i++) assert.ok(!v.checkCode('000000000000').locked);
-  const fifth = v.checkCode('000000000000');
-  assert.ok(fifth.locked && fifth.retryAfter === 30);
-  assert.ok(v.checkCode(c.code).locked);
-  const v2 = new Vault({ dataDir: dir, now: () => t }).load();
-  assert.ok(v2.checkCode(c.code).locked);
-  t += 31_000;
-  assert.ok(v2.checkCode('111111111111').retryAfter === 60);
-  t += 61_000;
+  for (let i = 0; i < 30; i++) {
+    const r = v.checkCode('000000000000');
+    assert.equal(r.ok, false); assert.equal(r.msg, 'קוד שגוי'); assert.ok(!r.locked && !r.retryAfter);
+  }
+  assert.ok(v.checkCode(c.code).ok);
+  assert.ok(v.readLog().filter(e => e.type === 'login_fail').length === 30);
+});
+
+test('vault: an old persisted code lockout is cleared on load', () => {
+  const { v, dir } = newVault(); v.setupAdmin('passw0rd!');
+  const [c] = issue(v, tmp(), { count: 1 });
+  v.data.security.code = { fails: 9, lockedUntil: Date.now() + 600_000 }; v.save();
+  const v2 = new Vault({ dataDir: dir }).load();
+  assert.deepEqual(v2.data.security.code, { fails: 0, lockedUntil: 0 });
   assert.ok(v2.checkCode(c.code).ok);
-  assert.ok(!v2.checkCode('222222222222').locked);
 });
 
 test('vault: admin lockout is separate from code lockout', () => {

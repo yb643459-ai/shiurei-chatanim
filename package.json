@@ -1,7 +1,7 @@
 {
   "name": "securecopy",
   "productName": "SecureCopy",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "שיעורי חתנים – העתקה מאובטחת של שיעורים לחתנים",
   "main": "src/main.js",
   "private": true,

@@ -20,7 +20,7 @@ const { resolveInside, realOrNull, isInside, isFilesystemRoot } = require('./cor
 const { getRemovableDrives } = require('./core/drives');
 const { copyItem } = require('./core/copier');
 const { getMtpDrives, copyToMtp } = require('./core/mtp');
-const { renderCodesHtml } = require('./core/pdfhtml');
+const { renderCodesHtml, FOOTER_TEMPLATE } = require('./core/pdfhtml');
 
 const INDEX_URL = pathToFileURL(path.join(__dirname, 'renderer', 'index.html')).href;
 const FONTS_DIR = path.join(__dirname, 'renderer', 'fonts');
@@ -107,7 +107,7 @@ handle('setup:admin', (_e, pw) => vault.setupAdmin(pw));
 handle('student:login', (_e, code) => {
   sessions.endAll();
   const r = vault.checkCode(code);
-  if (!r.ok) return { ok: false, msg: r.msg, retryAfter: r.retryAfter || 0, locked: !!r.locked };
+  if (!r.ok) return { ok: false, msg: r.msg };
   sessions.startStudent({ id: r.id, hint: r.hint, label: r.label, roots: r.roots });
   return {
     ok: true, label: r.label, oneTime: r.maxUses === 1,
@@ -224,7 +224,10 @@ handle('admin:issue', async (_e, opts = {}) => {
     await fsp.writeFile(htmlPath, html, 'utf8');
     await win.loadFile(htmlPath);
     await win.webContents.executeJavaScript('document.fonts.ready.then(() => true)');
-    const pdf = await win.webContents.printToPDF({ pageSize: 'A4', printBackground: true, preferCSSPageSize: true });
+    const pdf = await win.webContents.printToPDF({
+      pageSize: 'A4', printBackground: true, preferCSSPageSize: true,
+      displayHeaderFooter: true, headerTemplate: '<div></div>', footerTemplate: FOOTER_TEMPLATE
+    });
     await fsp.writeFile(save.filePath, pdf);
   } catch (err) {
     console.error('pdf', err);
